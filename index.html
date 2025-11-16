@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Blob City</title>
+<style>
+body { margin: 0; overflow: hidden; }
+#ui {
+position: fixed;
+top: 10px;
+left: 10px;
+font-size: 20px;
+color: white;
+font-family: Arial;
+z-index: 10;
+}
+#shop {
+position: fixed;
+top: 50%;
+left: 50%;
+width: 250px;
+height: 300px;
+transform: translate(-50%,-50%);
+background: rgba(0,0,0,0.8);
+color: white;
+padding: 20px;
+font-family: Arial;
+display: none;
+z-index: 20;
+}
+.btn {
+background: #444;
+padding: 10px;
+margin: 5px;
+cursor: pointer;
+border: 1px solid #777;
+display: inline-block;
+}
+</style>
+</head>
+<body>
+
+<div id="ui">
+Storlek: <span id="sizeText">0</span><br>
+Blobs: <span id="blobCoins">0</span><br><br>
+<div class="btn" onclick="toggleShop()">SHOP</div>
+</div>
+
+<div id="shop">
+<h2>Shop</h2>
+<p>Köp skins:</p>
+<div class="btn" onclick="buySkin('red',5000)">Röd – 5000 blobs</div><br>
+<div class="btn" onclick="buySkin('blue',5000)">Blå – 5000 blobs</div><br>
+<div class="btn" onclick="buySkin('green',5000)">Grön – 5000 blobs</div><br><br>
+<div class="btn" onclick="toggleShop()">Stäng</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ----- SCENE -----
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+camera.position.set(0, 20, 30);
+
+// ----- RENDERER -----
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// ----- LIGHT -----
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10,20,10);
+scene.add(light);
+
+// ----- FLOOR -----
+const floorGeo = new THREE.PlaneGeometry(1000,1000);
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
+
+// ----- PLAYER BLOB -----
+let blobSize = 30; // start-storlek
+let blobCoins = 0;
+
+const blobGeo = new THREE.SphereGeometry(1, 32, 32);
+const blobMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+const blob = new THREE.Mesh(blobGeo, blobMat);
+blob.position.y = blobSize / 10;
+blob.scale.set(blobSize/10, blobSize/10, blobSize/10);
+scene.add(blob);
+
+// ----- SIZE TEXT ABOVE PLAYER -----
+const sizeDiv = document.createElement('div');
+sizeDiv.style.position = 'absolute';
+sizeDiv.style.color = 'white';
+sizeDiv.style.fontSize = '20px';
+sizeDiv.innerHTML = blobSize;
+document.body.appendChild(sizeDiv);
+
+// ----- CITY BUILDINGS -----
+function addBuilding(x,z) {
+const geo = new THREE.BoxGeometry(10,Math.random()*40+10,10);
+const mat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+const b = new THREE.Mesh(geo, mat);
+b.position.set(x, geo.parameters.height/2, z);
+scene.add(b);
+}
+for (let i=0;i<40;i++) addBuilding((Math.random()*800)-400, (Math.random()*800)-400);
+
+// ----- ITEMS TO EAT -----
+let items = [];
+function spawnItem() {
+const geo = new THREE.SphereGeometry(2, 16, 16);
+const mat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+const item = new THREE.Mesh(geo, mat);
+item.position.set(
+(Math.random()*800)-400,
+2,
+(Math.random()*800)-400
+);
+scene.add(item);
+items.push(item);
+}
+for (let i=0;i<200;i++) spawnItem();
+
+// ----- MONSTERS -----
+let monsters = [];
+function spawnMonster() {
+const geo = new THREE.BoxGeometry(5,5,5);
+const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+const m = new THREE.Mesh(geo, mat);
+m.position.set((Math.random()*800)-400,5,(Math.random()*800)-400);
+monsters.push(m);
+scene.add(m);
+}
+for (let i=0;i<10;i++) spawnMonster();
+
+// ----- SPIT -----
+function spit(m) {
+const geo = new THREE.SphereGeometry(1,16,16);
+const mat = new THREE.MeshStandardMaterial({ color: 0x00aa00 });
+const s = new THREE.Mesh(geo,mat);
+s.position.copy(m.position);
+s.userData = { vx: (blob.position.x - m.position.x)/50,
+vz: (blob.position.z - m.position.z)/50 };
+scene.add(s);
+return s;
+}
+let spits = [];
+
+// ----- MOVEMENT -----
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// ----- SHOP -----
+function toggleShop(){
+const shop = document.getElementById("shop");
+shop.style.display = (shop.style.display === "none" || shop.style.display==="") ? "block" : "none";
+}
+
+function buySkin(color, cost){
+if (blobCoins >= cost){
+blobCoins -= cost;
+blob.material.color.set(color);
+document.getElementById("blobCoins").innerHTML = blobCoins;
+} else {
+alert("Du har inte tillräckligt med blobs!");
+}
+}
+
+// ----- GAME LOOP -----
+function loop(){
+requestAnimationFrame(loop);
+
+// movement
+if (keys["w"]) blob.position.z -= 0.6;
+if (keys["s"]) blob.position.z += 0.6;
+if (keys["a"]) blob.position.x -= 0.6;
+if (keys["d"]) blob.position.x += 0.6;
+
+// camera behind blob
+camera.position.lerp(new THREE.Vector3(
+blob.position.x,
+blob.position.y + 20,
+blob.position.z + 30
+), 0.1);
+camera.lookAt(blob.position);
+
+// eat items
+items = items.filter(item=>{
+if (blob.position.distanceTo(item.position) < blobSize/8 + 3){
+blobSize += 10;
+blobCoins += 1;
+blob.scale.set(blobSize/10, blobSize/10, blobSize/10);
+document.getElementById("sizeText").innerHTML = blobSize;
+document.getElementById("blobCoins").innerHTML = blobCoins;
+scene.remove(item);
+return false;
+}
+return true;
+});
+
+// monsters spit
+if (Math.random()<0.02){
+const m = monsters[Math.floor(Math.random()*monsters.length)];
+spits.push(spit(m));
+}
+
+// move spit
+spits = spits.filter(s=>{
+s.position.x += s.userData.vx;
+s.position.z += s.userData.vz;
+
+if (blob.position.distanceTo(s.position)<blobSize/10+2){
+blobSize = Math.max(20, blobSize-20);
+blob.scale.set(blobSize/10, blobSize/10, blobSize/10);
+document.getElementById("sizeText").innerHTML = blobSize;
+scene.remove(s);
+return false;
+}
+return true;
+});
+
+// show size text above blob
+const p = blob.position.clone().project(camera);
+sizeDiv.style.left = (p.x * 0.5 + 0.5) * window.innerWidth + "px";
+sizeDiv.style.top = (-p.y * 0.5 + 0.5) * window.innerHeight + "px";
+sizeDiv.innerHTML = blobSize;
+
+renderer.render(scene, camera);
+}
+loop();
+</script>
+
+</body>
+</html>
